@@ -931,7 +931,7 @@ class TerraformGenerator(TemplateGenerator):
             'event_source_arn': resource.stream_arn,
             'batch_size': resource.batch_size,
             'starting_position': resource.starting_position,
-            'function_name': resource.lambda_function.function_name,
+            'function_name': self._fref(resource.lambda_function),
         }
 
     def _generate_snslambdasubscription(self, resource, template):
