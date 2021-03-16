@@ -893,7 +893,7 @@ class TerraformGenerator(TemplateGenerator):
             resource.resource_name] = {
             'statement_id': resource.resource_name,
             'action': 'lambda:InvokeFunction',
-            'function_name': self._fref(resource.lambda_function)
+            'function_name': self._fref(resource.lambda_function),
             'principal': self._options.service_principal('s3'),
             'source_arn': ('arn:${data.aws_partition.chalice.partition}:'
                            's3:::%s' % resource.bucket)
@@ -994,7 +994,7 @@ class TerraformGenerator(TemplateGenerator):
         template['resource'].setdefault(
             'aws_lambda_permission', {})[
             resource.resource_name] = {
-            'function_name': self._fref(resource.lambda_function)
+            'function_name': self._fref(resource.lambda_function),
             'action': 'lambda:InvokeFunction',
             'principal': self._options.service_principal('events'),
             'source_arn': "${aws_cloudwatch_event_rule.%s.arn}" % (
