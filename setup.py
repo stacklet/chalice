@@ -20,14 +20,13 @@ def recursive_include(relative_dir):
 
 
 install_requires = [
-    'click>=7,<8.0',
+    'click>=7,<9.0',
     'botocore>=1.14.0,<2.0.0',
     'typing==3.6.4;python_version<"3.7"',
     'mypy-extensions==0.4.3',
     'six>=1.10.0,<2.0.0',
-    'pip>=9,<21.2',
+    'pip>=9,<21.3',
     'attrs>=19.3.0,<21.3.0',
-    'enum34;python_version<"3.4"',
     'jmespath>=0.9.3,<1.0.0',
     'pyyaml>=5.3.1,<6.0.0',
     'inquirer>=2.7.0,<3.0.0',
@@ -37,7 +36,7 @@ install_requires = [
 
 setup(
     name='chalice',
-    version='1.23.0',
+    version='1.24.2',
     description="Microframework",
     long_description=README,
     author="James Saryerwinnie",
@@ -70,8 +69,7 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: Apache Software License',
         'Natural Language :: English',
-        "Programming Language :: Python :: 2",
-        'Programming Language :: Python :: 2.7',
+        "Programming Language :: Python :: 3",
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',

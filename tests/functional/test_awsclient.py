@@ -19,8 +19,9 @@ from chalice.awsclient import LambdaClientError
 from chalice.awsclient import ReadTimeout
 
 
-def create_policy_statement(source_arn, service_name, statement_id):
-    return {
+def create_policy_statement(source_arn, service_name, statement_id,
+                            account_id=None):
+    policy_statement = {
         'Action': 'lambda:InvokeFunction',
         'Condition': {
             'ArnLike': {
@@ -32,6 +33,11 @@ def create_policy_statement(source_arn, service_name, statement_id):
         'Resource': 'function-arn',
         'Sid': statement_id,
     }
+    if account_id is not None:
+        policy_statement['Condition']['StringEquals'] = {
+            'AWS:SourceAccount': account_id,
+        }
+    return policy_statement
 
 
 def test_region_name_is_exposed(stubbed_session):
@@ -1302,6 +1308,77 @@ class TestUpdateDomainName(object):
             'certificate_arn': 'certificate_arn'
         }
         stubbed_session.verify_stubs()
+
+    def test_update_domain_name_govcloud(self, stubbed_session):
+        stubbed_session.create_client(
+            'apigateway', region_name='us-gov-west-1')
+        apig = stubbed_session.stub('apigateway')
+        self._setup_expected_update_calls(apig)
+        # Verify we use the aws-us-gov partition in our ARN.
+        arn = (
+            'arn:aws-us-gov:apigateway:us-gov-west-1::/domainnames/test_domain'
+        )
+        stubbed_session.stub('apigatewayv2') \
+            .get_tags(ResourceArn=arn) \
+            .returns({
+                'Tags': {}
+            })
+        stubbed_session.activate_stubs()
+        awsclient = TypedAWSClient(stubbed_session)
+        awsclient.update_domain_name(
+            protocol='HTTP',
+            domain_name='test_domain',
+            endpoint_type='EDGE',
+            security_policy='TLS_1_0',
+            certificate_arn='certificate_arn',
+        )
+        stubbed_session.verify_stubs()
+
+    def _setup_expected_update_calls(self, apig):
+        apig.update_domain_name(
+            domainName='test_domain',
+            patchOperations=[
+                {
+                    'op': 'replace',
+                    'path': '/securityPolicy',
+                    'value': 'TLS_1_0',
+                },
+            ]
+        ).returns({
+            'domainName': 'test_domain',
+            'distributionHostedZoneId': 'hosted_zone_id',
+            'certificateArn': 'old_certificate_arn',
+            'distributionDomainName': 'dist_domain_name',
+            'endpointConfiguration': {
+                'types': [
+                    'EDGE',
+                ],
+            },
+            'domainNameStatus': 'AVAILABLE',
+            'securityPolicy': 'TLS_1_0'
+        })
+        apig.update_domain_name(
+            domainName='test_domain',
+            patchOperations=[
+                {
+                    'op': 'replace',
+                    'path': '/certificateArn',
+                    'value': 'certificate_arn',
+                }
+            ]
+        ).returns({
+            'domainName': 'test_domain',
+            'distributionHostedZoneId': 'hosted_zone_id',
+            'distributionDomainName': 'dist_domain_name',
+            'certificateArn': 'certificate_arn',
+            'endpointConfiguration': {
+                'types': [
+                    'EDGE',
+                ],
+            },
+            'domainNameStatus': 'AVAILABLE',
+            'securityPolicy': 'TLS_1_0'
+        })
 
     def test_update_domain_name_max_retries(self, stubbed_session):
         for _ in range(6):
@@ -3256,12 +3333,13 @@ def test_add_permission_for_s3_event(stubbed_session):
         StatementId=stub.ANY,
         Principal='s3.amazonaws.com',
         SourceArn='arn:aws:s3:::mybucket',
+        SourceAccount='12345',
     ).returns({})
     stubbed_session.activate_stubs()
 
     awsclient = TypedAWSClient(stubbed_session)
     awsclient.add_permission_for_s3_event(
-        'mybucket', 'function-arn')
+        'mybucket', 'function-arn', '12345')
     stubbed_session.verify_stubs()
 
 
@@ -3272,6 +3350,9 @@ def test_skip_if_permission_already_granted_to_s3(stubbed_session):
         'Statement': [{
             'Action': 'lambda:InvokeFunction',
             'Condition': {
+                'StringEquals': {
+                    'AWS:SourceAccount': '12345',
+                },
                 'ArnLike': {
                     'AWS:SourceArn': 'arn:aws:s3:::mybucket',
                 }
@@ -3288,7 +3369,7 @@ def test_skip_if_permission_already_granted_to_s3(stubbed_session):
     stubbed_session.activate_stubs()
     awsclient = TypedAWSClient(stubbed_session)
     awsclient.add_permission_for_s3_event(
-        'mybucket', 'function-arn')
+        'mybucket', 'function-arn', '12345')
     stubbed_session.verify_stubs()
 
 
@@ -3480,7 +3561,8 @@ def test_can_remove_s3_permission(stubbed_session):
         'Id': 'default',
         'Statement': [create_policy_statement('arn:aws:s3:::mybucket',
                                               service_name='s3',
-                                              statement_id='12345')],
+                                              statement_id='12345',
+                                              account_id='67890')],
         'Version': '2012-10-17'
     }
     lambda_stub = stubbed_session.stub('lambda')
@@ -3495,7 +3577,7 @@ def test_can_remove_s3_permission(stubbed_session):
     stubbed_session.activate_stubs()
     client = TypedAWSClient(stubbed_session)
     client.remove_permission_for_s3_event(
-        'mybucket', 'name')
+        'mybucket', 'name', '67890')
     stubbed_session.verify_stubs()
 
 

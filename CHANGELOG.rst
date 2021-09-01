@@ -2,6 +2,30 @@
 CHANGELOG
 =========
 
+1.24.2
+======
+
+* enhancement:Dependencies:Bump attrs dependency to latest version (#1786)
+* bugfix:Auth:Fix ARN parsing when generating a builtin AuthResponse (#1775)
+* enhancement:CLI:Upgrade Click dependency to support v8.0.0 (#1729)
+
+
+1.24.1
+======
+
+* bugfix:GovCloud:Fix partition error when updating API Gateway in GovCloud region (#1770)
+
+
+1.24.0
+======
+
+* feature:Python2.7:Remove support for Python 2.7 (#1766)
+* enhancement:Terraform:Update Terraform packaging to support version 1.0 (#1757)
+* enhancement:Typing:Add missing WebsocketEvent type information (#1746)
+* enhancement:S3 events:Add source account to Lambda permissions when configuring S3 events (#1635)
+* enhancement:Packaging:Add support for Terraform v0.15 (#1725)
+
+
 1.23.0
 ======
 
