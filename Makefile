@@ -13,7 +13,7 @@ check:
 	# Proper docstring conventions according to pep257
 	#
 	#
-	pydocstyle --add-ignore=D100,D101,D102,D103,D104,D105,D204,D301 --match='(?!(test_|regions)).*\.py' chalice/
+	pydocstyle --add-ignore=D100,D101,D102,D103,D104,D105,D107,D204,D301 --match='(?!(test_|regions)).*\.py' chalice/
 
 pylint:
 	###### PYLINT ######
@@ -25,7 +25,7 @@ test:
 	py.test -v $(TESTS)
 
 typecheck:
-	mypy --py2 --ignore-missing-imports --follow-imports=skip -p chalice --disallow-untyped-defs --strict-optional --warn-no-return
+	mypy --ignore-missing-imports --follow-imports=skip -p chalice --disallow-untyped-defs --strict-optional --warn-no-return
 
 coverage:
 	py.test --cov chalice --cov-report term-missing $(TESTS)
@@ -55,7 +55,4 @@ doccheck:
 	# so any sphinx-build warnings will fail the build.
 	$(MAKE) -C docs html
 
-prcheck-py2: check pylint coverage
-
-
-prcheck: prcheck-py2 doccheck typecheck
+prcheck: check pylint coverage doccheck typecheck

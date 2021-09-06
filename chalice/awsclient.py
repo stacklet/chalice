@@ -25,7 +25,7 @@ import re
 import uuid
 from collections import OrderedDict
 from typing import Any, Optional, Dict, Callable, List, Iterator, Iterable, \
-    Sequence, IO, Tuple  # noqa
+    Sequence, IO, Tuple, Union  # noqa
 
 import botocore.session  # noqa
 from botocore.loaders import create_loader
@@ -597,7 +597,7 @@ class TypedAWSClient(object):
         kwargs = {
             'FunctionName': name,
             'InvocationType': 'RequestResponse',
-        }
+        }  # type: Dict[str, Union[str, bytes]]
         if payload is not None:
             kwargs['Payload'] = payload
 
@@ -729,9 +729,10 @@ class TypedAWSClient(object):
             updated_domain_name = self._update_domain_name_v2(kwargs)
         else:
             raise ValueError('Unsupported protocol value.')
-        resource_arn = 'arn:aws:apigateway:{region_name}:' \
+        resource_arn = 'arn:{partition}:apigateway:{region_name}:' \
                        ':/domainnames/{domain_name}'\
             .format(
+                partition=self.partition_name,
                 region_name=self.region_name,
                 domain_name=domain_name
             )
@@ -1218,7 +1219,7 @@ class TypedAWSClient(object):
     def get_sdk_download_stream(self, rest_api_id,
                                 api_gateway_stage=DEFAULT_STAGE_NAME,
                                 sdk_type='javascript'):
-        # type: (str, str, str) -> IO[str]
+        # type: (str, str, str) -> IO[bytes]
         """Generate an SDK for a given SDK.
 
         Returns a file like object that streams a zip contents for the
@@ -1522,24 +1523,27 @@ class TypedAWSClient(object):
             final_config.append(new_config)
         return final_config
 
-    def add_permission_for_s3_event(self, bucket, function_arn):
-        # type: (str, str) -> None
+    def add_permission_for_s3_event(self, bucket, function_arn, account_id):
+        # type: (str, str, str) -> None
         bucket_arn = 'arn:{partition}:s3:::{bucket}'.format(
             partition=self.partition_name, bucket=bucket)
         self._add_lambda_permission_if_needed(
             source_arn=bucket_arn,
             function_arn=function_arn,
             service_name='s3',
+            source_account=account_id,
         )
 
-    def remove_permission_for_s3_event(self, bucket, function_arn):
-        # type: (str, str) -> None
+    def remove_permission_for_s3_event(self, bucket, function_arn,
+                                       account_id):
+        # type: (str, str, str) -> None
         bucket_arn = 'arn:{partition}:s3:::{bucket}'.format(
             partition=self.partition_name, bucket=bucket)
         self._remove_lambda_permission_if_needed(
             source_arn=bucket_arn,
             function_arn=function_arn,
             service_name='s3',
+            source_account=account_id,
         )
 
     def disconnect_s3_bucket_from_lambda(self, bucket, function_arn):
@@ -1562,22 +1566,25 @@ class TypedAWSClient(object):
         )
 
     def _add_lambda_permission_if_needed(self, source_arn, function_arn,
-                                         service_name):
-        # type: (str, str, str) -> None
+                                         service_name, source_account=None):
+        # type: (str, str, str, Optional[str]) -> None
         policy = self.get_function_policy(function_arn)
         if self._policy_gives_access(policy, source_arn, service_name):
             return
         random_id = self._random_id()
         dns_suffix = self.endpoint_dns_suffix_from_arn(source_arn)
-        self._client('lambda').add_permission(
-            Action='lambda:InvokeFunction',
-            FunctionName=function_arn,
-            StatementId=random_id,
-            Principal=self.service_principal(service_name,
-                                             self.region_name,
-                                             dns_suffix),
-            SourceArn=source_arn,
-        )
+        kwargs = {
+            'Action': 'lambda:InvokeFunction',
+            'FunctionName': function_arn,
+            'StatementId': random_id,
+            'Principal': self.service_principal(service_name,
+                                                self.region_name,
+                                                dns_suffix),
+            'SourceArn': source_arn,
+        }
+        if source_account is not None:
+            kwargs['SourceAccount'] = source_account
+        self._client('lambda').add_permission(**kwargs)
 
     def _policy_gives_access(self, policy, source_arn, service_name):
         # type: (Dict[str, Any], str, str) -> bool
@@ -1610,8 +1617,9 @@ class TypedAWSClient(object):
                 return True
         return False
 
-    def _statement_gives_arn_access(self, statement, source_arn, service_name):
-        # type: (Dict[str, Any], str, str) -> bool
+    def _statement_gives_arn_access(self, statement, source_arn,
+                                    service_name, source_account=None):
+        # type: (Dict[str, Any], str, str, Optional[str]) -> bool
         dns_suffix = self.endpoint_dns_suffix_from_arn(source_arn)
         principal = self.service_principal(service_name,
                                            self.region_name,
@@ -1623,19 +1631,29 @@ class TypedAWSClient(object):
             return False
         if statement.get('Principal', {}).get('Service', '') != principal:
             return False
+        if source_account is not None:
+            if statement.get('Condition', {}).get('StringEquals', {}).get(
+                    'AWS:SourceAccount', '') != source_account:
+                return False
         # We're not checking the "Resource" key because we're assuming
         # that lambda.get_policy() is returning the policy for the particular
         # resource in question.
         return True
 
     def _remove_lambda_permission_if_needed(self, source_arn, function_arn,
-                                            service_name):
-        # type: (str, str, str) -> None
+                                            service_name, source_account=None):
+        # type: (str, str, str, Optional[str]) -> None
         client = self._client('lambda')
         policy = self.get_function_policy(function_arn)
         for statement in policy.get('Statement', []):
-            if self._statement_gives_arn_access(statement, source_arn,
-                                                service_name):
+            kwargs = {
+                'statement': statement,
+                'source_arn': source_arn,
+                'service_name': service_name,
+            }
+            if source_account is not None:
+                kwargs['source_account'] = source_account
+            if self._statement_gives_arn_access(**kwargs):
                 client.remove_permission(
                     FunctionName=function_arn,
                     StatementId=statement['Sid'],
