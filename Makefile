@@ -55,4 +55,4 @@ doccheck:
 	# so any sphinx-build warnings will fail the build.
 	$(MAKE) -C docs html
 
-prcheck: check pylint coverage doccheck typecheck
+prcheck: check pylint coverage typecheck
