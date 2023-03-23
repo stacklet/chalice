@@ -1,7 +1,7 @@
 import mock
 
-import attr
 import pytest
+from dataclasses import replace, dataclass
 from typing import Tuple
 
 from chalice.awsclient import TypedAWSClient, ResourceDoesNotExistError
@@ -555,7 +555,7 @@ class TestPlanLambdaFunction(BasePlannerTests):
             deployment_package=models.DeploymentPackage(
                 filename='foo')
         )
-        copy_of_layer = attr.evolve(layer)
+        copy_of_layer = replace(layer)
         self.remote_state.declare_resource_exists(
             copy_of_layer,
             layer_version_arn='arn:bar:4'
@@ -675,7 +675,7 @@ class TestPlanLambdaFunction(BasePlannerTests):
 
     def test_can_update_lambda_function_code(self):
         function = create_function_resource('function_name')
-        copy_of_function = attr.evolve(function)
+        copy_of_function = replace(function)
         self.remote_state.declare_resource_exists(copy_of_function)
         # Now let's change the memory size and ensure we
         # get an update.
@@ -721,9 +721,9 @@ class TestPlanLambdaFunction(BasePlannerTests):
             'function_name',
             managed_layer=create_managed_layer(),
         )
-        copy_of_function = attr.evolve(function)
+        copy_of_function = replace(function)
         self.remote_state.declare_resource_exists(copy_of_function)
-        copy_of_layer = attr.evolve(function.managed_layer)
+        copy_of_layer = replace(function.managed_layer)
         self.remote_state.declare_resource_exists(
             copy_of_layer,
             layer_version_arn='arn:bar:4'
@@ -2413,7 +2413,7 @@ class TestRemoteState(object):
 
     def test_unknown_model_type_raises_error(self):
 
-        @attr.attrs
+        @dataclass
         class Foo(models.ManagedModel):
             resource_type = 'foo'
 
@@ -2620,6 +2620,21 @@ class TestUnreferencedResourcePlanner(BasePlannerTests):
         assert len(plan) == 1
         assert plan[0].method_name == 'delete_function'
         assert plan[0].params == {'function_name': 'arn'}
+
+    def test_will_delete_log_group(self):
+        plan = []
+        deployed = {
+            'resources': [{
+                'resource_type': 'log_group',
+                'name': 'my-log-group',
+                'log_group_name': '/aws/lambda/mygroup',
+            }],
+        }
+        config = FakeConfig(deployed)
+        self.execute(plan, config)
+        assert len(plan) == 1
+        assert plan[0].method_name == 'delete_retention_policy'
+        assert plan[0].params == {'log_group_name': '/aws/lambda/mygroup'}
 
     def test_supports_multiple_unreferenced_and_unchanged(self):
         first = create_function_resource('first')
@@ -3180,3 +3195,51 @@ class TestKeyVariable(object):
 
         key_var_2 = KeyDataVariable('name', 'key')
         assert key_var == key_var_2
+
+
+class TestPlanLogGroup(BasePlannerTests):
+    def test_can_create_log_group(self):
+        self.remote_state.declare_no_resources_exists()
+        resource = models.LogGroup(
+            resource_name='default-log-group',
+            log_group_name='/aws/lambda/func-name',
+            retention_in_days=14,
+        )
+        plan = self.determine_plan(resource)
+        assert plan == [
+            models.APICall(
+                method_name='create_log_group',
+                params={'log_group_name': '/aws/lambda/func-name'}
+            ),
+            models.APICall(
+                method_name='put_retention_policy',
+                params={'name': '/aws/lambda/func-name',
+                        'retention_in_days': 14},
+            ),
+            models.RecordResourceValue(
+                resource_type='log_group',
+                resource_name='default-log-group',
+                name='log_group_name',
+                value='/aws/lambda/func-name'),
+        ]
+
+    def test_can_update_log_group(self):
+        resource = models.LogGroup(
+            resource_name='default-log-group',
+            log_group_name='/aws/lambda/func-name',
+            retention_in_days=14,
+        )
+        self.remote_state.declare_resource_exists(resource)
+        plan = self.determine_plan(resource)
+        assert plan == [
+            models.APICall(
+                method_name='put_retention_policy',
+                params={'name': '/aws/lambda/func-name',
+                        'retention_in_days': 14},
+            ),
+            models.RecordResourceValue(
+                resource_type='log_group',
+                resource_name='default-log-group',
+                name='log_group_name',
+                value='/aws/lambda/func-name'),
+        ]
