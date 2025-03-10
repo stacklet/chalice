@@ -50,7 +50,10 @@ from botocore.vendored.requests import (
 from botocore.vendored.requests.exceptions import (
     ReadTimeout as RequestsReadTimeout,
 )
-from typing_extensions import TypedDict
+try:
+    from typing import TypedDict
+except ImportError:
+    from typing_extensions import TypedDict
 
 from chalice.constants import DEFAULT_STAGE_NAME
 from chalice.constants import MAX_LAMBDA_DEPLOYMENT_SIZE
@@ -1418,8 +1421,7 @@ class TypedAWSClient(object):
             logGroupName=log_group_name, interleaved=True
         )
         try:
-            for log_message in self._iter_log_messages(pages):
-                yield log_message
+            yield from self._iter_log_messages(pages)
         except logs.exceptions.ResourceNotFoundException:
             # If the lambda function exists but has not been invoked yet,
             # it's possible that the log group does not exist and we'll get
@@ -1823,6 +1825,7 @@ class TypedAWSClient(object):
         batch_size: int,
         starting_position: Optional[str] = None,
         maximum_batching_window_in_seconds: Optional[int] = 0,
+        maximum_concurrency: Optional[int] = None,
     ) -> None:
         lambda_client = self._client('lambda')
         batch_window = maximum_batching_window_in_seconds
@@ -1832,6 +1835,10 @@ class TypedAWSClient(object):
             'BatchSize': batch_size,
             'MaximumBatchingWindowInSeconds': batch_window,
         }
+        if maximum_concurrency:
+            kwargs['ScalingConfig'] = {
+                'MaximumConcurrency': maximum_concurrency
+            }
         if starting_position is not None:
             kwargs['StartingPosition'] = starting_position
         return self._call_client_method_with_retries(
@@ -1845,6 +1852,7 @@ class TypedAWSClient(object):
         event_uuid: str,
         batch_size: int,
         maximum_batching_window_in_seconds: Optional[int] = 0,
+        maximum_concurrency: Optional[int] = None,
     ) -> None:
         lambda_client = self._client('lambda')
         batch_window = maximum_batching_window_in_seconds
@@ -1853,6 +1861,10 @@ class TypedAWSClient(object):
             'BatchSize': batch_size,
             'MaximumBatchingWindowInSeconds': batch_window,
         }
+        if maximum_concurrency:
+            kwargs['ScalingConfig'] = {
+                'MaximumConcurrency': maximum_concurrency
+            }
         self._call_client_method_with_retries(
             lambda_client.update_event_source_mapping,
             kwargs,

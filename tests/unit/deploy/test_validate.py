@@ -1,5 +1,6 @@
 import pytest
-import mock
+import warnings
+from unittest import mock
 
 from chalice.app import Chalice
 from chalice.config import Config
@@ -48,9 +49,9 @@ def test_python_version_invalid_from_real_config():
 
 def test_python_version_is_valid():
     config = Config.create()
-    with pytest.warns(None) as record:
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
         validate_python_version(config, config.lambda_python_version)
-    assert len(record) == 0
 
 
 def test_manage_iam_role_false_requires_role_arn(sample_app):

@@ -22,7 +22,7 @@ from collections.abc import Mapping
 from collections.abc import MutableMapping
 
 
-__version__: str = '1.29.0'
+__version__: str = '1.31.4'
 
 from typing import List, Dict, Any, Optional, Sequence, Union, Callable, Set, \
     Iterator, TYPE_CHECKING, Tuple
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 _PARAMS = re.compile(r'{\w+}')
 MiddlewareFuncType = Callable[[Any, Callable[[Any], Any]], Any]
 UserHandlerFuncType = Callable[..., Any]
+HeadersType = Dict[str, Union[str, List[str]]]
 
 # In python 3 string and bytes are different so we explicitly check
 # for both.
@@ -54,8 +55,10 @@ def handle_extra_types(
                     % obj.__class__.__name__)
 
 
-def error_response(message: str, error_code: str, http_status_code: int,
-                   headers: Optional[Dict[str, str]] = None) -> 'Response':
+def error_response(
+    message: str, error_code: str, http_status_code: int,
+    headers: Optional[HeadersType] = None
+) -> 'Response':
     body = {'Code': error_code, 'Message': message}
     response = Response(body=body, status_code=http_status_code,
                         headers=headers)
@@ -469,13 +472,13 @@ class Response(object):
 
     def __init__(
             self, body: Any,
-            headers: Optional[Dict[str, str]] = None,
+            headers: Optional[HeadersType] = None,
             status_code: int = 200
     ):
         self.body: Any = body
         if headers is None:
             headers = {}
-        self.headers: Dict[str, str] = headers
+        self.headers: HeadersType = headers
         self.status_code = status_code
 
     def to_dict(
@@ -498,7 +501,7 @@ class Response(object):
         return response
 
     def _sort_headers(
-            self, all_headers: Dict[str, str]
+            self, all_headers: HeadersType
     ) -> Tuple[Dict[str, Any], Dict[str, List]]:
         multi_headers: Dict[str, List] = {}
         single_headers: Dict[str, Any] = {}
@@ -765,7 +768,8 @@ class DecoratorAPI(object):
     def on_sqs_message(self, queue: Optional[str] = None, batch_size: int = 1,
                        name: Optional[str] = None,
                        queue_arn: Optional[str] = None,
-                       maximum_batching_window_in_seconds: int = 0
+                       maximum_batching_window_in_seconds: int = 0,
+                       maximum_concurrency: Optional[int] = None,
                        ) -> Callable[..., Any]:
         return self._create_registration_function(
             handler_type='on_sqs_message',
@@ -775,7 +779,8 @@ class DecoratorAPI(object):
                 'queue_arn': queue_arn,
                 'batch_size': batch_size,
                 'maximum_batching_window_in_seconds':
-                    maximum_batching_window_in_seconds
+                    maximum_batching_window_in_seconds,
+                'maximum_concurrency': maximum_concurrency,
             }
         )
 
@@ -1098,6 +1103,8 @@ class _HandlerRegistration(object):
             batch_size=kwargs['batch_size'],
             maximum_batching_window_in_seconds=kwargs[
                 'maximum_batching_window_in_seconds'],
+            maximum_concurrency=kwargs[
+                'maximum_concurrency'],
         )
         self.event_sources.append(sqs_config)
 
@@ -1622,13 +1629,15 @@ class SNSEventConfig(BaseEventSourceConfig):
 class SQSEventConfig(BaseEventSourceConfig):
     def __init__(self, name: str, handler_string: str, queue: Optional[str],
                  queue_arn: Optional[str], batch_size: int,
-                 maximum_batching_window_in_seconds: int):
+                 maximum_batching_window_in_seconds: int,
+                 maximum_concurrency: Optional[int]):
         super(SQSEventConfig, self).__init__(name, handler_string)
         self.queue: Optional[str] = queue
         self.queue_arn: Optional[str] = queue_arn
         self.batch_size: int = batch_size
         self.maximum_batching_window_in_seconds: int = \
             maximum_batching_window_in_seconds
+        self.maximum_concurrency: Optional[int] = maximum_concurrency
 
 
 class KinesisEventConfig(BaseEventSourceConfig):
@@ -1930,7 +1939,7 @@ class RestAPIEventHandler(BaseLambdaHandler):
         return response
 
     def _unhandled_exception_to_response(self) -> Response:
-        headers = {}
+        headers: HeadersType = {}
         path = getattr(self.current_request, 'path', 'unknown')
         self.log.error("Caught exception for path %s", path, exc_info=True)
         if self.debug:
